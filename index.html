@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PoGo Team Cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="controls">
+  <div class="row">
+    <label>Cup
+      <select id="cup"></select>
+    </label>
+    <label>Meta size
+      <input id="topN" type="number" min="5" max="60" value="30">
+    </label>
+    <label class="check"><input id="showNames" type="checkbox" checked> Names under meta Pokémon</label>
+    <span id="status" class="status">Loading game data…</span>
+  </div>
+  <div class="row team" id="teamInputs"></div>
+  <div class="row">
+    <button id="build" class="primary">Build card</button>
+    <button id="png">Download PNG</button>
+  </div>
+  <datalist id="speciesList"></datalist>
+</header>
+
+<main>
+  <div id="card" class="card"></div>
+</main>
+
+<script src="assets/types.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
