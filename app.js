@@ -9,7 +9,6 @@ const DEFAULT_TEAM = ["sableye_mega", "melmetal", "machamp_shadow"];
 
 // ---------- type chart (Pokémon GO multipliers) ----------
 const TYPES = ["normal","fire","water","electric","grass","ice","fighting","poison","ground","flying","psychic","bug","rock","ghost","dragon","dark","steel","fairy"];
-const TYPE_COLORS = { normal:"#919AA2", fire:"#FF9D55", water:"#5090D6", electric:"#F4D23C", grass:"#63BC5A", ice:"#73CEC0", fighting:"#CE416B", poison:"#B567CE", ground:"#D97845", flying:"#89AAE3", psychic:"#FA7179", bug:"#91C12F", rock:"#C5B78C", ghost:"#5269AD", dragon:"#0B6DC3", dark:"#5A5465", steel:"#5A8EA2", fairy:"#EC8FE6" };
 const CHART = { // attacker: [super effective], [not very effective], [immune]
   normal:[[],["rock","steel"],["ghost"]],
   fire:[["grass","ice","bug","steel"],["fire","water","rock","dragon"],[]],
@@ -207,8 +206,7 @@ function analyse(team, metaN, rankings, cp) {
 const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const cap = s => s[0].toUpperCase() + s.slice(1);
 function typeIcon(t) {
-  const svg = "data:image/svg+xml;base64," + btoa(window.TYPE_SVGS[t]);
-  return `<div class="type"><div class="ic" style="background:${TYPE_COLORS[t]}"><img src="${svg}" alt=""></div>${cap(t)}</div>`;
+  return `<div class="type"><img class="ic" src="assets/type-icons/${t}.png" alt=""><span>${cap(t)}</span></div>`;
 }
 const typeGrid = (list, cols) => list.length
   ? `<div class="types" style="--cols:${Math.min(cols, Math.max(1, list.length))}">${list.map(typeIcon).join("")}</div>`
@@ -223,7 +221,7 @@ async function render(rows) {
   const html = await Promise.all(rows.map(async r => {
     const rc = r.resists.length > 8 ? 6 : 4;
     return `<section class="prow">
-      <div class="who"><img crossorigin="anonymous" src="${await spriteFor(r.poke, true)}" alt="">
+      <div class="who"><img crossorigin="anonymous" class="${isShadow(r.poke.speciesId) ? "shadow" : ""}" src="${await spriteFor(r.poke, true)}" alt="">
         <div class="name">${esc(prettyName(r.poke.speciesName, { keepVariant: true }))}</div><div class="role">${r.role}</div></div>
       <div class="block good"><h2>GOOD</h2><div class="subs">
         <div class="sub"><h3>RESISTS</h3>${typeGrid(r.resists, rc)}</div>

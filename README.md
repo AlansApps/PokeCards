@@ -1,4 +1,4 @@
-# PoGo Team Cards
+# PokeCards
 
 Genera tarjetas de equipo para PvP de Pokémon GO (LEAD · SAFE SWITCH · CLOSER), siempre en inglés y sin título.
 Es una web estática (HTML + JS), sin backend: se puede publicar gratis en GitHub Pages.
@@ -19,7 +19,7 @@ Es una web estática (HTML + JS), sin backend: se puede publicar gratis en GitHu
   (`formats`), Pokémon, stats y movimientos. Los rankings por copa están en `src/data/rankings/<cup>/overall/rankings-<cp>.json`.
   Cuando rota la copa o cambia la meta, PvPoke actualiza esos archivos y la app lo toma solo.
 - **Imágenes de Pokémon**: [PokeAPI sprites](https://github.com/PokeAPI/sprites) (official artwork). Formas Mega/regionales se resuelven con la API de PokeAPI.
-- **Iconos de tipos**: [duiker101/pokemon-type-svg-icons](https://github.com/duiker101/pokemon-type-svg-icons), precargados en `assets/types/` y empaquetados en `assets/types.js`.
+- **Iconos de tipos**: PNG redondos en `assets/type-icons/`, recortados de las tarjetas de referencia del proyecto.
 
 ## Correr local
 
@@ -32,7 +32,7 @@ Abrí http://localhost:8765, elegí copa, tus 3 Pokémon (y movimientos), **Buil
 ## Publicar en GitHub Pages
 
 ```powershell
-gh repo create pogo-team-cards --public --source . --push
+gh repo create PokeCards --public --source . --push
 ```
 
 Después: Settings → Pages → Branch `main` / root.
