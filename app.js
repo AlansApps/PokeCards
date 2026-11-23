@@ -49,7 +49,8 @@ function cpm(level) {
   return Math.sqrt((CPM_INT[f] ** 2 + CPM_INT[f + 1] ** 2) / 2);
 }
 function stats(p, cp) {
-  const iv = (p.defaultIVs && p.defaultIVs["cp" + cp]) || [40, 15, 15, 15];
+  // PvPoke's default IVs per league; Master League (no cap) = level 50 hundo.
+  const iv = (p.defaultIVs && p.defaultIVs["cp" + cp]) || [50, 15, 15, 15];
   const c = cpm(iv[0]);
   let atk = (p.baseStats.atk + iv[1]) * c;
   let def = (p.baseStats.def + iv[2]) * c;
@@ -127,28 +128,78 @@ function moveDamage(move, attacker, aStats, defender, dStats) {
   const stab = attacker.types.includes(move.type) ? 1.2 : 1;
   return Math.floor(0.5 * move.power * (aStats.atk / dStats.def) * stab * eff(move.type, defender.types) * 1.3) + 1;
 }
-// Damage per turn of a fast + best charged move loop (no shields, no buffs).
-function dpt(att, aStats, moveset, def, dStats) {
-  const fast = MOVES[moveset[0]];
-  if (!fast) return 0;
-  const fd = moveDamage(fast, att, aStats, def, dStats);
-  const turns = fast.turns || fast.cooldown / 500;
-  let best = fd / turns;
-  for (const id of moveset.slice(1)) {
-    const c = MOVES[id];
-    if (!c || !c.energy) continue;
-    const n = Math.ceil(c.energy / Math.max(1, fast.energyGain));
-    const v = (n * fd + moveDamage(c, att, aStats, def, dStats)) / (n * turns);
-    best = Math.max(best, v);
-  }
-  return best;
+// Simplified turn-based 1v1 (500 ms turns). Models fast-move timing, energy, shields,
+// shield baiting with the cheaper move, CMP ties and guaranteed stat buffs/debuffs.
+// Also models Mimikyu-style Disguise. Ignores random-chance buffs, other form changes and switching.
+const stageMult = s => (s >= 0 ? (4 + s) / 4 : 4 / (4 - s));
+function fighter(p, moves, st, shields) {
+  const fast = MOVES[moves[0]];
+  const charged = moves.slice(1).map(id => MOVES[id]).filter(m => m && m.energy > 0).sort((a, b) => a.energy - b.energy);
+  const nb = p.nativeStatBuffs || [0, 0];
+  return { p, st, hp: st.hp, maxhp: st.hp, energy: 0, shields, cd: 0, as: nb[0], ds: nb[1], fast, charged,
+    disguise: p.formChange?.effect === "protect", // e.g. Mimikyu: first unshielded charged move is blocked
+    turns: fast ? (fast.turns || fast.cooldown / 500) : 1, gain: fast ? fast.energyGain : 0 };
 }
-// > 1 means "me" KOs the opponent before it KOs me.
+function hit(move, a, d) {
+  const stab = a.p.types.includes(move.type) ? 1.2 : 1;
+  const atk = a.st.atk * stageMult(a.as), def = d.st.def * stageMult(d.ds);
+  return Math.floor(0.5 * move.power * (atk / def) * stab * eff(move.type, d.p.types) * 1.3) + 1;
+}
+function applyBuffs(m, me, op) {
+  if (!m.buffs || String(m.buffApplyChance) !== "1") return;
+  const clamp = v => Math.max(-4, Math.min(4, v));
+  const self = m.buffTarget === "both" ? m.buffsSelf : m.buffTarget === "self" ? m.buffs : null;
+  const opp = m.buffTarget === "both" ? m.buffsOpponent : m.buffTarget === "opponent" ? m.buffs : null;
+  if (self) { me.as = clamp(me.as + self[0]); me.ds = clamp(me.ds + self[1]); }
+  if (opp) { op.as = clamp(op.as + opp[0]); op.ds = clamp(op.ds + opp[1]); }
+}
+function pickCharged(me, op) {
+  const ok = me.charged.filter(m => me.energy >= m.energy);
+  if (!ok.length) return null;
+  if (op.shields > 0) return ok[0]; // bait the shield with the cheapest move
+  const dmg = m => hit(m, me, op);
+  const ko = ok.find(m => dmg(m) >= op.hp);
+  if (ko) return ko;
+  const best = me.charged.reduce((a, m) => (dmg(m) > dmg(a) ? m : a));
+  if (me.energy >= best.energy) return best;
+  // Would I faint before I can afford the big one? Then fire what I have.
+  const wait = Math.ceil((best.energy - me.energy) / Math.max(1, me.gain)) * me.turns;
+  const opReady = op.charged.find(m => op.energy >= m.energy);
+  const threat = (hit(op.fast, op, me) / op.turns) * wait + (opReady ? hit(opReady, op, me) : 0);
+  return threat >= me.hp ? ok.reduce((a, m) => (dmg(m) > dmg(a) ? m : a)) : null;
+}
+// Battle rating 0..1000 like PvPoke: > 500 means "me" wins.
+function battle(me, meMoves, opp, oppMoves, cp, shields) {
+  const s = [fighter(me, meMoves, stats(me, cp), shields), fighter(opp, oppMoves, stats(opp, cp), shields)];
+  if (!s[0].fast || !s[1].fast) return 500;
+  for (let t = 0; t < 1000 && s[0].hp > 0 && s[1].hp > 0; t++) {
+    const throws = [];
+    for (const i of [0, 1]) if (s[i].cd === 0) { const m = pickCharged(s[i], s[1 - i]); if (m) throws.push([i, m]); }
+    throws.sort((a, b) => s[b[0]].st.atk - s[a[0]].st.atk); // CMP: higher attack goes first
+    const threw = [false, false];
+    for (const [i, m] of throws) {
+      const me_ = s[i], op = s[1 - i];
+      if (me_.hp <= 0) continue;
+      threw[i] = true;
+      me_.energy -= m.energy;
+      if (op.shields > 0) { op.shields--; op.hp -= 1; }
+      else if (op.disguise) { op.disguise = false; op.hp -= 1; }
+      else op.hp -= hit(m, me_, op);
+      applyBuffs(m, me_, op);
+    }
+    for (const i of [0, 1]) if (s[i].cd === 0 && !threw[i] && s[i].hp > 0) s[i].cd = s[i].turns;
+    const fastHits = [0, 1].map(i => (s[i].cd === 1 ? hit(s[i].fast, s[i], s[1 - i]) : 0));
+    for (const i of [0, 1]) {
+      const f = s[i];
+      if (f.cd > 0 && --f.cd === 0) { s[1 - i].hp -= fastHits[i]; f.energy = Math.min(100, f.energy + f.gain); }
+    }
+  }
+  const frac = f => Math.max(0, f.hp) / f.maxhp;
+  return Math.round(500 * (1 - frac(s[1])) + 500 * frac(s[0]));
+}
+// Average of the 0-0, 1-1 and 2-2 shield scenarios.
 function matchupScore(me, meMoves, opp, oppMoves, cp) {
-  const ms = stats(me, cp), os = stats(opp, cp);
-  const myTTK = os.hp / dpt(me, ms, meMoves, opp, os);
-  const oppTTK = ms.hp / dpt(opp, os, oppMoves, me, ms);
-  return oppTTK / myTTK;
+  return ([0, 1, 2].reduce((a, sh) => a + battle(me, meMoves, opp, oppMoves, cp, sh), 0) / 3);
 }
 function defaultMoveset(p, rankings) {
   const r = rankings.find(x => x.speciesId === p.speciesId);
@@ -196,7 +247,9 @@ function analyse(team, metaN, rankings, cp) {
     const best = scores.indexOf(Math.max(...scores));
     const row = rows[best];
     const hitsSE = row.moves.some(id => MOVES[id] && eff(MOVES[id].type, m.poke.types) > 1);
-    (scores[best] >= 1.25 && hitsSE ? row.punishes : row.safe).push({ ...m, score: scores[best] });
+    // PUNISHES: clear win (rating >= 600) while hitting it super effectively.
+    // SAFE OPTION: your best answer. threat = none of your 3 wins it on average.
+    (scores[best] >= 600 && hitsSE ? row.punishes : row.safe).push({ ...m, score: scores[best], threat: scores[best] < 500 });
   }
   for (const r of rows) { r.punishes.sort((a, b) => b.score - a.score); r.safe.sort((a, b) => b.score - a.score); }
   return rows;
@@ -214,7 +267,7 @@ const typeGrid = (list, cols) => list.length
 async function monList(list) {
   if (!list.length) return `<div class="empty">—</div>`;
   const items = await Promise.all(list.map(async m =>
-    `<div class="mon"><img crossorigin="anonymous" src="${await spriteFor(m.poke, false)}" alt=""><span>${esc(prettyName(m.poke.speciesName, { keepVariant: false }))}</span></div>`));
+    `<div class="mon${m.threat ? " threat" : ""}" title="${m.threat ? "None of your 3 wins this on average — least bad option" : ""}"><img crossorigin="anonymous" src="${await spriteFor(m.poke, false)}" alt=""><span>${esc(prettyName(m.poke.speciesName, { keepVariant: false }))}</span></div>`));
   return `<div class="mons">${items.join("")}</div>`;
 }
 async function render(rows) {
@@ -254,7 +307,8 @@ function fillMoves(slot, id) {
   const charged = [...p.chargedMoves, ...(p.extraChargedMoves || [])];
   box.innerHTML = `<select data-k="f">${moveOptions(p.fastMoves, ms[0])}</select>
     <select data-k="c1">${moveOptions(charged, ms[1])}</select>
-    <select data-k="c2"><option value="">—</option>${moveOptions(charged, ms[2])}</select>`;
+    <select data-k="c2"><option value="">—</option>${moveOptions(charged, ms[2])}</select>` +
+    (p.extraChargedMoves?.length ? `<select data-k="c3"><option value="">—</option>${moveOptions(p.extraChargedMoves, ms[3])}</select>` : "");
 }
 function buildTeamInputs() {
   $("teamInputs").innerHTML = ROLES.map((r, i) => `<div class="slot" data-i="${i}"><b>${r}</b>
@@ -283,7 +337,10 @@ async function build() {
     const rows = analyse(readTeam(), +$("topN").value || 30, currentRankings, cp);
     setStatus("Drawing…");
     await render(rows);
-    setStatus(`Meta: top ${$("topN").value} of ${$("cup").selectedOptions[0].text} · PvPoke data ${GM.timestamp || ""}`);
+    const illegal = rows.filter(r => !currentRankings.some(x => x.speciesId === r.poke.speciesId))
+      .map(r => prettyName(r.poke.speciesName, { keepVariant: true }));
+    setStatus((illegal.length ? `⚠ Not in this cup's rankings (probably not allowed): ${illegal.join(", ")} · ` : "") +
+      `Meta: top ${$("topN").value} of ${$("cup").selectedOptions[0].text} · PvPoke data ${GM.timestamp || ""}`);
   } catch (e) { setStatus("⚠ " + e.message); console.error(e); }
 }
 

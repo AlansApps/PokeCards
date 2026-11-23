@@ -39,6 +39,9 @@ Después: Settings → Pages → Branch `main` / root.
 
 ## Limitaciones
 
-- El reparto de USE AGAINST es una heurística (no simula escudos, buffs ni switches). Para matchups finos, usar PvPoke.
+- El simulador modela turnos, energía, escudos (cebo con el ataque barato), CMP, buffs/debuffs garantizados y el Disguise de Mimikyu.
+  No modela buffs aleatorios, otros cambios de forma (Cramorant, Aegislash, Zygarde) ni switches. Validado contra los matchups
+  publicados por PvPoke (escudos 1-1, top 50 de cada copa): coincide en quién gana en ~87–96% de los casos.
+- Si uno de tus Pokémon no está en el ranking de la copa (probablemente no es legal ahí), la app lo avisa arriba.
 - Si una copa rotativa no tiene rankings publicados todavía en PvPoke, no aparece en la lista.
 - Imágenes y nombres son © Nintendo / Game Freak / The Pokémon Company; uso personal / fan.

@@ -64,3 +64,4 @@ main { padding: 16px; overflow-x: auto; }
 .card.no-names .mon span { display: none; }
 .empty { font-size: 14px; color: #8a94a6; }
 .who img.shadow { filter: drop-shadow(0 0 6px #9b4dff) drop-shadow(0 0 14px #b57bff); }
+.mon.threat img { background: radial-gradient(circle, #fbd3d7 0 62%, transparent 64%); border-radius: 50%; }
