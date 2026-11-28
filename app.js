@@ -303,6 +303,7 @@ async function render(rows) {
 const $ = id => document.getElementById(id);
 const setStatus = s => ($("status").textContent = s);
 const nameToId = {};
+const lookupId = v => nameToId[v.trim().replace(/s+/g, " ").toLowerCase()];
 let currentRankings = [];
 
 function moveOptions(ids, selected) {
@@ -325,12 +326,12 @@ function buildTeamInputs() {
     <div class="moves"></div></div>`).join("");
   document.querySelectorAll(".slot").forEach((slot, i) => {
     fillMoves(slot, DEFAULT_TEAM[i]);
-    slot.querySelector("input").addEventListener("change", e => fillMoves(slot, nameToId[e.target.value]));
+    slot.querySelector("input").addEventListener("change", e => fillMoves(slot, lookupId(e.target.value)));
   });
 }
 function readTeam() {
   return [...document.querySelectorAll(".slot")].map(slot => {
-    const id = nameToId[slot.querySelector("input").value];
+    const id = lookupId(slot.querySelector("input").value);
     if (!id) throw new Error(`Unknown Pokémon: "${slot.querySelector("input").value}"`);
     const moves = [...slot.querySelectorAll("select")].map(s => s.value).filter(Boolean);
     return { poke: POKE[id], moves };
@@ -387,8 +388,9 @@ async function downloadPng() {
       `<optgroup label="Fixed leagues">${formats.filter(f => fixed.includes(f)).map(opt).join("")}</optgroup>` +
       `<optgroup label="Other (not featured now)">${formats.filter(f => f.showFormat === false).map(opt).join("")}</optgroup>`;
     function opt(f) { return `<option value="${f.cup}|${f.cp}">${esc(f.title)}</option>`; }
+    // Search list shows PvPoke names ("Clefable (Mega)"); typing is case-insensitive.
     const list = Object.values(POKE).sort((a, b) => a.speciesName.localeCompare(b.speciesName));
-    for (const p of list) nameToId[p.speciesName] = p.speciesId;
+    for (const p of list) nameToId[p.speciesName.toLowerCase()] = p.speciesId;
     $("speciesList").innerHTML = list.map(p => `<option value="${esc(p.speciesName)}">`).join("");
     const { cup, cp } = selectedFormat();
     currentRankings = await loadRankings(cup, cp).catch(() => []);
