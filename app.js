@@ -110,7 +110,9 @@ async function spriteFor(p, keepVariant) {
 let GM, POKE = {}, MOVES = {}, rankingsCache = {};
 async function loadGM() {
   GM = await (await fetch(`${PVPOKE}/gamemaster.min.json`)).json();
-  for (const p of GM.pokemon) if (p.released !== false) POKE[p.speciesId] = p;
+  // Released Pokémon, plus Megas announced in the game data but not out yet (so you can plan ahead).
+  const isMega = p => (p.tags || []).includes("mega") || /_mega(_[xy])?$/.test(p.speciesId);
+  for (const p of GM.pokemon) if (p.released !== false || isMega(p)) POKE[p.speciesId] = p;
   for (const m of GM.moves) MOVES[m.moveId] = m;
 }
 async function loadRankings(cup, cp) {
@@ -204,8 +206,15 @@ function matchupScore(me, meMoves, opp, oppMoves, cp) {
 function defaultMoveset(p, rankings) {
   const r = rankings.find(x => x.speciesId === p.speciesId);
   if (r?.moveset) return r.moveset;
-  const fast = [...p.fastMoves].sort((a, b) => (MOVES[b]?.energyGain || 0) - (MOVES[a]?.energyGain || 0))[0];
-  return [fast, ...(p.chargedMoves || []).slice(0, 2)];
+  // No PvPoke ranking (e.g. an unreleased Mega): pick a sensible PvP moveset ourselves.
+  const stab = m => (p.types.includes(m.type) ? 1.2 : 1);
+  const fastVal = id => { const m = MOVES[id]; if (!m) return -1; const t = m.turns || m.cooldown / 500; return (m.power * stab(m) + m.energyGain) / t; };
+  const fast = [...p.fastMoves].sort((a, b) => fastVal(b) - fastVal(a))[0];
+  const dpe = id => { const m = MOVES[id]; return m && m.energy ? (m.power * stab(m)) / m.energy : -1; };
+  const charged = [...(p.chargedMoves || [])].filter(id => MOVES[id]).sort((a, b) => dpe(b) - dpe(a));
+  const first = charged[0];
+  const second = charged.find(id => id !== first && MOVES[id].type !== MOVES[first]?.type) || charged[1];
+  return [fast, first, second, ...(p.extraChargedMoves || []).slice(0, 1)].filter(Boolean);
 }
 
 // ---------- card analysis ----------
@@ -337,9 +346,11 @@ async function build() {
     const rows = analyse(readTeam(), +$("topN").value || 30, currentRankings, cp);
     setStatus("Drawing…");
     await render(rows);
-    const illegal = rows.filter(r => !currentRankings.some(x => x.speciesId === r.poke.speciesId))
-      .map(r => prettyName(r.poke.speciesName, { keepVariant: true }));
-    setStatus((illegal.length ? `⚠ Not in this cup's rankings (probably not allowed): ${illegal.join(", ")} · ` : "") +
+    const label = r => prettyName(r.poke.speciesName, { keepVariant: true });
+    const unreleased = rows.filter(r => r.poke.released === false).map(label);
+    const illegal = rows.filter(r => r.poke.released !== false && !currentRankings.some(x => x.speciesId === r.poke.speciesId)).map(label);
+    setStatus((unreleased.length ? `ℹ Not released yet (preview, moves guessed): ${unreleased.join(", ")} · ` : "") +
+      (illegal.length ? `⚠ Not in this cup's rankings (probably not allowed): ${illegal.join(", ")} · ` : "") +
       `Meta: top ${$("topN").value} of ${$("cup").selectedOptions[0].text} · PvPoke data ${GM.timestamp || ""}`);
   } catch (e) { setStatus("⚠ " + e.message); console.error(e); }
 }
